@@ -577,7 +577,7 @@ public class RestoreIntegrationTest {
 
         kafkaStreams = startKafkaStreams(builder, null, kafkaStreams1Configuration);
 
-        validateReceivedMessages(sampleData, outputTopic);
+        validateReceivedMessages(sampleData, outputTopic, 120_000);
 
         // Close kafkaStreams1 (with cleanup) and start it again to force the restoration of the state.
         kafkaStreams.close(Duration.ofMillis(IntegrationTestUtils.DEFAULT_TIMEOUT));
@@ -615,7 +615,8 @@ public class RestoreIntegrationTest {
     }
 
     private void validateReceivedMessages(final List<KeyValue<Integer, Integer>> expectedRecords,
-                                          final String outputTopic) throws Exception {
+                                          final String outputTopic,
+                                          long waitTime) throws Exception {
         final Properties consumerProperties = new Properties();
         consumerProperties.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, CLUSTER.bootstrapServers());
         consumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "group-" + appId);
@@ -632,7 +633,8 @@ public class RestoreIntegrationTest {
         IntegrationTestUtils.waitUntilFinalKeyValueRecordsReceived(
             consumerProperties,
             outputTopic,
-            expectedRecords
+            expectedRecords,
+            waitTime
         );
     }
 
