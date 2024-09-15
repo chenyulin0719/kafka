@@ -632,6 +632,7 @@ public class StoreChangelogReader implements ChangelogReader {
                 if (changelogMetadata.restoreEndOffset == null || offset < changelogMetadata.restoreEndOffset) {
                     changelogMetadata.bufferedLimitIndex = changelogMetadata.bufferedRecords.size();
                 }
+                log.info("### :Put new record to bufferedRecords: record.offset: {}", record.offset());
             }
         }
     }

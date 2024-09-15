@@ -30,6 +30,8 @@ import org.apache.kafka.common.metrics.stats.Rate;
 import org.apache.kafka.common.metrics.stats.WindowedCount;
 import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
+//import org.apache.kafka.common.utils.Utils;
+import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.errors.StreamsException;
 import org.apache.kafka.streams.errors.TaskCorruptedException;
@@ -41,6 +43,7 @@ import org.slf4j.Logger;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Deque;
@@ -176,6 +179,12 @@ public class DefaultStateUpdater implements StateUpdater {
         //   as checkpointing time and idle time
         private void runOnce() {
             final long totalStartTimeMs = time.milliseconds();
+
+//            // Add delay to reproduce the second flaky issue. (Force the rebalance happens before restoring task started.)
+//            log.info("### Add delay to reproduce the second flaky issue. (Force the rebalance happens before restoring task started.");
+//            Utils.sleep(5000);
+//            log.info("### Add delay to reproduce 5 sec passed.");
+
             performActionsOnTasks();
 
             resumeTasks();
@@ -200,7 +209,12 @@ public class DefaultStateUpdater implements StateUpdater {
         private void performActionsOnTasks() {
             tasksAndActionsLock.lock();
             try {
+                int count = 0;
                 for (final TaskAndAction taskAndAction : tasksAndActions()) {
+                    count += 1;
+                    if (count == 4) {
+                        Utils.sleep(1000);
+                    }
                     final Action action = taskAndAction.action();
                     switch (action) {
                         case ADD:
@@ -492,6 +506,12 @@ public class DefaultStateUpdater implements StateUpdater {
                     + " task " + taskId + " was directly added to the paused tasks.");
             } else {
                 updatingTasks.put(taskId, task);
+                final StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
+                final String stackTraceString = Arrays.stream(stackTraceElements)
+                        .map(StackTraceElement::toString)
+                        .collect(Collectors.joining("\n"));
+                log.info("### registing taskid:{}, {}", taskId, stackTraceString);
+
                 changelogReader.register(task.changelogPartitions(), task.stateManager());
                 if (task.isActive()) {
                     log.info("Stateful active task " + taskId + " was added to the state updater");

@@ -69,6 +69,7 @@ import static java.util.Collections.singleton;
 import static org.apache.kafka.streams.StreamsConfig.PROCESSING_EXCEPTION_HANDLER_CLASS_CONFIG;
 import static org.apache.kafka.streams.processor.internals.metrics.StreamsMetricsImpl.maybeMeasureLatency;
 import static org.apache.kafka.streams.processor.internals.metrics.StreamsMetricsImpl.maybeRecordSensor;
+//import static org.apache.kafka.common.utils.Utils.sleep;
 
 /**
  * A StreamTask is associated with a {@link AbstractPartitionGroup}, and is assigned to a StreamThread for processing.
@@ -263,6 +264,8 @@ public class StreamTask extends AbstractTask implements ProcessorNodePunctuator,
     @Override
     public void initializeIfNeeded() {
         if (state() == State.CREATED) {
+
+//            sleep(15000);
             recordCollector.initialize();
 
             StateManagerUtil.registerStateStores(log, logPrefix, topology, stateMgr, stateDirectory, processorContext);

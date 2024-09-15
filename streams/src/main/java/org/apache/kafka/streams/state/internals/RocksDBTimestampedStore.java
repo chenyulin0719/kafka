@@ -39,9 +39,11 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Arrays;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static org.apache.kafka.streams.state.TimestampedBytesStore.convertToTimestampedFormat;
 
@@ -82,6 +84,12 @@ public class RocksDBTimestampedStore extends RocksDBStore implements Timestamped
             cfAccessor = new DualColumnFamilyAccessor(noTimestampColumnFamily, withTimestampColumnFamily);
         } else {
             log.info("Opening store {} in regular mode", name);
+
+            final StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
+            final String stackTraceString = Arrays.stream(stackTraceElements)
+                    .map(StackTraceElement::toString)
+                    .collect(Collectors.joining("\n"));
+            log.info("### openRocksDB :{}, {}", name, stackTraceString);
             cfAccessor = new SingleColumnFamilyAccessor(withTimestampColumnFamily);
             noTimestampColumnFamily.close();
         }

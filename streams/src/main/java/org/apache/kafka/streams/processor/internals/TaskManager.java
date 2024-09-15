@@ -70,6 +70,7 @@ import java.util.stream.Stream;
 
 import static org.apache.kafka.common.utils.Utils.intersection;
 import static org.apache.kafka.common.utils.Utils.union;
+import static org.apache.kafka.common.utils.Utils.sleep;
 import static org.apache.kafka.streams.internals.StreamsConfigUtils.ProcessingMode.EXACTLY_ONCE_V2;
 import static org.apache.kafka.streams.processor.internals.StateManagerUtil.parseTaskDirectoryName;
 
@@ -992,7 +993,17 @@ public class TaskManager {
 
     private void addTasksToStateUpdater() {
         final Map<TaskId, RuntimeException> taskExceptions = new LinkedHashMap<>();
+        int loop = 0;
         for (final Task task : tasks.drainPendingTasksToInit()) {
+            loop++;
+            if (loop == 4) {
+                // loop 4 + sleep 10 秒 ->
+                // loop 4 + sleep 5 秒 ->
+                // loop 3 + sleep 5 秒 -> 連續 26 次成功
+                // loop 3 + sleep 10 秒 -> 連續 20 次成功
+                sleep(5);
+                log.info("### Sleep 10 sec before registering the third task.", task);
+            }
             try {
                 addTaskToStateUpdater(task);
             } catch (final RuntimeException e) {
@@ -1009,6 +1020,7 @@ public class TaskManager {
         try {
             task.initializeIfNeeded();
             stateUpdater.add(task);
+            log.info("### add task in TaskManager.addTaskToStateUpdater(), task: {}", task);
         } catch (final LockException lockException) {
             // The state directory may still be locked by another thread, when the rebalance just happened.
             // Retry in the next iteration.
