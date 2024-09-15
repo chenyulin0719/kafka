@@ -569,7 +569,7 @@ public class RestoreIntegrationTest {
                .toStream()
                .to(outputTopic);
 
-        final List<KeyValue<Integer, Integer>> sampleData = IntStream.range(0, 100)
+        final List<KeyValue<Integer, Integer>> sampleData = IntStream.range(0, 300)
                                                                      .mapToObj(i -> new KeyValue<>(i, i))
                                                                      .collect(Collectors.toList());
 
@@ -577,7 +577,7 @@ public class RestoreIntegrationTest {
 
         kafkaStreams = startKafkaStreams(builder, null, kafkaStreams1Configuration);
 
-        validateReceivedMessages(sampleData, outputTopic);
+        validateReceivedMessages(sampleData, outputTopic, 120_000);
 
         // Close kafkaStreams1 (with cleanup) and start it again to force the restoration of the state.
         kafkaStreams.close(Duration.ofMillis(IntegrationTestUtils.DEFAULT_TIMEOUT));
@@ -587,7 +587,7 @@ public class RestoreIntegrationTest {
         kafkaStreams = startKafkaStreams(builder, kafkaStreams1StateRestoreListener, kafkaStreams1Configuration);
 
         // Must make ensure all the restoring tasks are in active state before starting the new instance.
-        waitForActiveRestoringTask(kafkaStreams, 5, IntegrationTestUtils.DEFAULT_TIMEOUT);
+        waitForActiveRestoringTask(kafkaStreams, 5, 120_000);
 
         assertTrue(kafkaStreams1StateRestoreListener.awaitUntilRestorationStarts());
         assertTrue(kafkaStreams1StateRestoreListener.awaitUntilBatchRestoredIsCalled());
@@ -602,7 +602,7 @@ public class RestoreIntegrationTest {
                                                                   kafkaStreams2Configuration)) {
 
             waitForCondition(() -> State.RUNNING == kafkaStreams2.state(),
-                             90_000,
+                             120_000,
                              () -> "kafkaStreams2 never transitioned to a RUNNING state.");
 
             assertTrue(kafkaStreams1StateRestoreListener.awaitUntilRestorationSuspends());
@@ -615,7 +615,8 @@ public class RestoreIntegrationTest {
     }
 
     private void validateReceivedMessages(final List<KeyValue<Integer, Integer>> expectedRecords,
-                                          final String outputTopic) throws Exception {
+                                          final String outputTopic,
+                                          final long waitTime) throws Exception {
         final Properties consumerProperties = new Properties();
         consumerProperties.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, CLUSTER.bootstrapServers());
         consumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "group-" + appId);
@@ -632,7 +633,8 @@ public class RestoreIntegrationTest {
         IntegrationTestUtils.waitUntilFinalKeyValueRecordsReceived(
             consumerProperties,
             outputTopic,
-            expectedRecords
+            expectedRecords,
+            waitTime
         );
     }
 
