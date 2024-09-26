@@ -85,6 +85,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 
 /**
  * AbstractCoordinator implements group management for a single group member by interacting with
@@ -562,6 +564,12 @@ public abstract class AbstractCoordinator implements Closeable {
         // rebalance in the call to poll below. This ensures that we do not mistakenly attempt
         // to rejoin before the pending rebalance has completed.
         if (joinFuture == null) {
+            final StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
+            final String stackTraceString = Arrays.stream(stackTraceElements)
+                    .map(StackTraceElement::toString)
+                    .collect(Collectors.joining("\n"));
+            log.warn("### Chang coordinator sate from {} to {}, trace: {}", state, MemberState.PREPARING_REBALANCE, stackTraceString);
+
             state = MemberState.PREPARING_REBALANCE;
             // a rebalance can be triggered consecutively if the previous one failed,
             // in this case we would not update the start time.
@@ -616,6 +624,7 @@ public abstract class AbstractCoordinator implements Closeable {
         );
 
         log.debug("Sending JoinGroup ({}) to coordinator {}", requestBuilder, this.coordinator);
+        log.warn("Sending JoinGroup ({}) to coordinator {}", requestBuilder, this.coordinator);
 
         // Note that we override the request timeout using the rebalance timeout since that is the
         // maximum time that it may block on the coordinator. We add an extra 5 seconds for small delays.
@@ -652,6 +661,7 @@ public abstract class AbstractCoordinator implements Closeable {
                             // the group. In this case, we do not want to continue with the sync group.
                             future.raise(new UnjoinedGroupException());
                         } else {
+                            log.warn("### Chang coordinator sate from {} to {}", state, MemberState.COMPLETING_REBALANCE);
                             state = MemberState.COMPLETING_REBALANCE;
 
                             // we only need to enable heartbeat thread whenever we transit to
@@ -841,6 +851,7 @@ public abstract class AbstractCoordinator implements Closeable {
                                 future.raise(Errors.INCONSISTENT_GROUP_PROTOCOL);
                             } else {
                                 log.info("Successfully synced group in generation {}", generation);
+                                log.warn("### Chang coordinator sate from {} to {}", state, MemberState.STABLE);
                                 state = MemberState.STABLE;
                                 rejoinReason = "";
                                 rejoinNeeded = false;
@@ -1054,6 +1065,8 @@ public abstract class AbstractCoordinator implements Closeable {
 
     private synchronized void resetStateAndGeneration(final String reason, final boolean shouldResetMemberId) {
         log.info("Resetting generation {}due to: {}", shouldResetMemberId ? "and member id " : "", reason);
+        log.warn("### Resetting generation {}due to: {}", shouldResetMemberId ? "and member id " : "", reason);
+        log.warn("### Chang coordinator sate from {} to {}", state, MemberState.UNJOINED);
 
         state = MemberState.UNJOINED;
         if (shouldResetMemberId) {
@@ -1073,10 +1086,12 @@ public abstract class AbstractCoordinator implements Closeable {
 
     synchronized void resetStateOnResponseError(ApiKeys api, Errors error, boolean shouldResetMemberId) {
         final String reason = String.format("encountered %s from %s response", error, api);
+//        log.warn("### call resetStateAndRejoin in resetStateOnResponseError(), reason : " + reason);
         resetStateAndRejoin(reason, shouldResetMemberId);
     }
 
     synchronized void resetGenerationOnLeaveGroup() {
+//        log.warn("### call resetStateAndRejoin in resetGenerationOnLeaveGroup(), reason : consumer pro-actively leaving the group");
         resetStateAndRejoin("consumer pro-actively leaving the group", true);
     }
 
@@ -1675,6 +1690,7 @@ public abstract class AbstractCoordinator implements Closeable {
     }
 
     final synchronized void setNewState(final MemberState state) {
+        log.warn("### Chang coordinator sate from {} to {}, (setNewState())", this.state, state);
         this.state = state;
     }
 }

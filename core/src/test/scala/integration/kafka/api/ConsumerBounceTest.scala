@@ -80,7 +80,7 @@ class ConsumerBounceTest extends AbstractConsumerTest with Logging {
   }
 
   @Test
-  def testConsumptionWithBrokerFailures(): Unit = consumeWithBrokerFailures(10)
+  def testConsumptionWithBrokerFailures(): Unit = consumeWithBrokerFailures(150)
 
   /*
    * 1. Produce a bunch of messages
@@ -92,7 +92,10 @@ class ConsumerBounceTest extends AbstractConsumerTest with Logging {
     producerSend(producer, numRecords)
 
     var consumed = 0L
-    val consumer = createConsumer()
+    val configOverrides = new Properties()
+//    configOverrides.setProperty(, )
+    val consumer = createConsumer(configOverrides = configOverrides)
+    val admin = createAdminClient()
 
     consumer.subscribe(Collections.singletonList(topic))
 
@@ -101,6 +104,11 @@ class ConsumerBounceTest extends AbstractConsumerTest with Logging {
       scheduler.start()
 
       while (scheduler.isRunning) {
+        val consumerGroupDescriptionResult = admin.describeConsumerGroups(
+          Set("my-test").asJava
+        )
+        warn("### coordinator: " + consumerGroupDescriptionResult.all().get())
+
         val records = consumer.poll(Duration.ofMillis(100)).asScala
 
         for (record <- records) {
@@ -108,9 +116,40 @@ class ConsumerBounceTest extends AbstractConsumerTest with Logging {
           consumed += 1
         }
 
+//        Thread.sleep(90000)
+
         if (records.nonEmpty) {
           consumer.commitSync()
-          assertEquals(consumer.position(tp), consumer.committed(Set(tp).asJava).get(tp).offset)
+          val curPosition = consumer.position(tp)
+          val offsetAndMetadata = consumer.committed(Set(tp).asJava).get(tp)
+          if (curPosition != offsetAndMetadata.offset) {
+            assertEquals(numRecords, offsetAndMetadata.offset)
+            val topicDescriptionFuture = admin.describeTopics(
+              Set("__consumer_offsets").asJava
+            ).topicNameValues().get("__consumer_offsets")
+
+            for (element <- topicDescriptionFuture.get().partitions().asScala) {
+              warn("### __consumer_offsets topicPartitionInfo ISR: " + element.isr().asScala.toList.map(_.id()) + ", leader:" + element.leader().id())
+            }
+            val consumerGroupDescriptionResult = admin.describeConsumerGroups(
+              Set("my-test").asJava
+            )
+            warn("### coordinator: " + consumerGroupDescriptionResult.all().get())
+            assertEquals(curPosition, offsetAndMetadata.offset, "### offsetAndMetadata:" + offsetAndMetadata)
+          }
+
+//          val topicDescriptionFuture = admin.describeTopics(
+//            Set("__consumer_offsets").asJava
+//          ).topicNameValues().get("__consumer_offsets")
+//
+//          for (element <- topicDescriptionFuture.get().partitions().asScala) {
+//            warn("### __consumer_offsets topicPartitionInfo ISR: " + element.isr().asScala.toList.map(_.id()) + ", leader:" + element.leader().id())
+//          }
+
+
+
+//          warn("### coordinator: " + consumerGroupDescriptionResult.describedGroups().get("group").get().coordinator().id())
+//          consumerGroupDescriptionResult.describedGroups().get("").get().coordinator().id()
 
           if (consumer.position(tp) == numRecords) {
             consumer.seekToBeginning(Collections.emptyList())

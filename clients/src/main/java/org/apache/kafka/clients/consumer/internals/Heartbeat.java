@@ -59,6 +59,7 @@ public final class Heartbeat {
 
         final LogContext logContext = new LogContext("[Heartbeat groupID=" + config.groupId + "] ");
         this.log = logContext.logger(getClass());
+        log.warn("#### in beginning Heartbeat, maxPollIntervalMs : " + this.maxPollIntervalMs + ", heartbeatIntervalMs: " + config.heartbeatIntervalMs + ", sessionTimeoutMs: " + rebalanceConfig.sessionTimeoutMs);
     }
 
     private void update(long now) {
@@ -135,7 +136,11 @@ public final class Heartbeat {
 
     boolean pollTimeoutExpired(long now) {
         update(now);
+        log.warn("#### in pollTimeoutExpired: " + maxPollIntervalMs + ", heartbeatIntervalMs: " + rebalanceConfig.heartbeatIntervalMs);
         return pollTimer.isExpired();
+        // force heartbeat timeout
+//        log.warn("### maxPollIntervalMs: " + maxPollIntervalMs);
+//        return true;
     }
 
     long lastPollTime() {

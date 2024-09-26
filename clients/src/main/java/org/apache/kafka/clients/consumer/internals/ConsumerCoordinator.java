@@ -1057,6 +1057,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
 
     private RequestFuture<Void> doCommitOffsetsAsync(final Map<TopicPartition, OffsetAndMetadata> offsets, final OffsetCommitCallback callback) {
         RequestFuture<Void> future = sendOffsetCommitRequest(offsets);
+        // block offset commit until the consumer was kicked off.
         inFlightAsyncCommits.incrementAndGet();
         final OffsetCommitCallback cb = callback == null ? defaultOffsetCommitCallback : callback;
         future.addListener(new RequestFutureListener<Void>() {
@@ -1099,21 +1100,30 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
      *         the coordinator
      */
     public boolean commitOffsetsSync(Map<TopicPartition, OffsetAndMetadata> offsets, Timer timer) {
+        log.warn("#### in commitOffsetsSync");
         invokeCompletedOffsetCommitCallbacks();
+        log.warn("#### after 1");
 
         if (offsets.isEmpty()) {
+            log.warn("#### after 2");
             // We guarantee that the callbacks for all commitAsync() will be invoked when
             // commitSync() completes, even if the user tries to commit empty offsets.
             return invokePendingAsyncCommits(timer);
         }
+        log.warn("#### after 3");
 
         long attempts = 0L;
         do {
+            log.warn("#### after 4");
             if (coordinatorUnknownAndUnreadySync(timer)) {
+                log.warn("#### test coordinatorUnknownAndUnreadySync ");
                 return false;
             }
+            log.warn("#### after 5");
 
             RequestFuture<Void> future = sendOffsetCommitRequest(offsets);
+//            log.warn("#### sleep 5 sec before commitOffset");
+//            Utils.sleep(5000);
             client.poll(future, timer);
 
             // We may have had in-flight offset commits when the synchronous commit began. If so, ensure that
