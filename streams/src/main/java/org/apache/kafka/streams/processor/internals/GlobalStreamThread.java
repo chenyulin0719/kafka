@@ -272,8 +272,10 @@ public class GlobalStreamThread extends Thread {
     @Override
     public void run() {
         final StateConsumer stateConsumer = initialize();
+        log.info("### GlobalStreamThread 1");
 
         if (stateConsumer == null) {
+            log.info("### GlobalStreamThread 2");
             // during initialization, the caller thread would wait for the state consumer
             // to restore the global state store before transiting to RUNNING state and return;
             // if an error happens during the restoration process, the stateConsumer will be null
@@ -288,9 +290,11 @@ public class GlobalStreamThread extends Thread {
 
             return;
         }
+        log.info("### GlobalStreamThread 3");
 
         boolean wipeStateStore = false;
         try {
+            log.info("### GlobalStreamThread 4");
             while (stillRunning()) {
                 final long size = cacheSize.getAndSet(-1L);
                 if (size != -1L) {
@@ -324,7 +328,10 @@ public class GlobalStreamThread extends Thread {
                     }
                 }
             }
+
+            log.info("### GlobalStreamThread 5");
         } catch (final InvalidOffsetException recoverableException) {
+            log.info("### GlobalStreamThread 6");
             wipeStateStore = true;
             log.error(
                 "Updating global state failed due to inconsistent local state. Will attempt to clean up the local state. You can restart KafkaStreams to recover from this error.",
@@ -336,9 +343,11 @@ public class GlobalStreamThread extends Thread {
             );
             this.streamsUncaughtExceptionHandler.accept(e);
         } catch (final Exception e) {
+            log.info("### GlobalStreamThread 7");
             log.error("Error happened while maintaining global state store. The streams application or client will now close to ERROR.", e);
             this.streamsUncaughtExceptionHandler.accept(e);
         } finally {
+            log.info("### GlobalStreamThread 8");
             // set the state to pending shutdown first as it may be called due to error;
             // its state may already be PENDING_SHUTDOWN so it will return false but we
             // intentionally do not check the returned flag
@@ -357,6 +366,7 @@ public class GlobalStreamThread extends Thread {
 
             setState(DEAD);
 
+            log.info("### 10");
             log.info("Shutdown complete");
         }
     }
@@ -468,6 +478,7 @@ public class GlobalStreamThread extends Thread {
     public void shutdown() {
         // one could call shutdown() multiple times, so ignore subsequent calls
         // if already shutting down or dead
+        log.info("### There have someone who called shutdown() , Shutting down global stream thread");
         setState(PENDING_SHUTDOWN);
         initializationLatch.countDown();
     }

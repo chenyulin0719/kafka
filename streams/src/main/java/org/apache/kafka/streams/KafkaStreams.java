@@ -107,6 +107,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import static org.apache.kafka.streams.errors.StreamsUncaughtExceptionHandler.StreamThreadExceptionResponse.SHUTDOWN_CLIENT;
 import static org.apache.kafka.streams.internals.ApiUtils.prepareMillisCheckFailMsgPrefix;
@@ -343,6 +344,13 @@ public class KafkaStreams implements AutoCloseable {
                 throw new IllegalStateException("Stream-client " + clientId + ": Unexpected state transition from " + oldState + " to " + newState);
             } else {
                 log.info("State transition from {} to {}", oldState, newState);
+                if (oldState == State.PENDING_ERROR) {
+                    final StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
+                    final String stackTraceString = Arrays.stream(stackTraceElements)
+                            .map(StackTraceElement::toString)
+                            .collect(Collectors.joining("\n"));
+                    log.info("### transite to newState {}: {}", newState, stackTraceString);
+                }
             }
             state = newState;
             stateLock.notifyAll();
@@ -1530,12 +1538,22 @@ public class KafkaStreams implements AutoCloseable {
             if (!error) {
                 setState(State.NOT_RUNNING);
             } else {
+                log.info("### Sleeping 2000 ms to make sure the stream.close if running on the half way.");
+                Utils.sleep(2000);
                 setState(State.ERROR);
             }
         }, clientId + "-CloseThread");
     }
 
     private boolean close(final Optional<Long> timeout, final boolean leaveGroup) {
+//        final StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
+//        final String stackTraceString = Arrays.stream(stackTraceElements)
+//                .map(StackTraceElement::toString)
+//                .collect(Collectors.joining("\n"));
+//        log.info("### call close(): {}", stackTraceString);
+        log.info("### 1");
+
+
         final long timeoutMs;
         if (timeout.isPresent()) {
             timeoutMs = timeout.get();
@@ -1544,10 +1562,17 @@ public class KafkaStreams implements AutoCloseable {
             timeoutMs = Long.MAX_VALUE;
         }
 
+        log.info("### 2");
+
         if (state.hasCompletedShutdown()) {
             log.info("Streams client is already in the terminal {} state, all resources are closed and the client has stopped.", state);
             return true;
         }
+
+        log.info("### 3");
+        log.info("### Sleep 1000 ms to let the shutdown thread transition state to ERROR");
+        Utils.sleep(1000);
+
         if (state.isShuttingDown()) {
             log.info("Streams client is in {}, all resources are being closed and the client will be stopped.", state);
             if (state == State.PENDING_ERROR && waitOnState(State.ERROR, timeoutMs)) {
@@ -1562,6 +1587,9 @@ public class KafkaStreams implements AutoCloseable {
                 return false;
             }
         }
+        log.info("### 4");
+
+        // setState will return false if the state is transiting from ERROR to PENDING_SHUTDOWN
 
         if (!setState(State.PENDING_SHUTDOWN)) {
             // if we can't transition to PENDING_SHUTDOWN but not because we're already shutting down, then it must be fatal
@@ -1585,6 +1613,12 @@ public class KafkaStreams implements AutoCloseable {
     }
 
     private void closeToError() {
+//        final StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
+//        final String stackTraceString = Arrays.stream(stackTraceElements)
+//                .map(StackTraceElement::toString)
+//                .collect(Collectors.joining("\n"));
+//        log.info("### call closeToError(): {}", stackTraceString);
+
         if (!setState(State.PENDING_ERROR)) {
             log.info("Skipping shutdown since we are already in {}", state());
         } else {
