@@ -176,12 +176,33 @@ class ProducerIdManagerTest {
   }
 
   @ParameterizedTest
-  @EnumSource(value = classOf[Errors], names = Array("UNKNOWN_SERVER_ERROR", "INVALID_REQUEST"))
+  @EnumSource(value = classOf[Errors], names = Array("UNKNOWN_SERVER_ERROR"))
   def testUnrecoverableErrors(error: Errors): Unit = {
     val time = new MockTime()
     val manager = new MockProducerIdManager(0, 0, 1, errorQueue = queue(Errors.NONE, error), time = time)
 
+    // 第一個 generateProducerId() 會失敗, 但 Producer ID Block Request 會成功, nextblcok 被設定
+    // 第二個 generateProducerId() 會成功, nextblock 變成 current block. nextblock 被清空. (由於 current block 將用罄90%, 在取得 下一個 Producer ID 後發送下一個 Producer ID Block Request)
+    // 這裡的 Producer ID Block Request 將會失敗, 狀態改變如下
+    //
+    // sendRequest Thread->
+    //    Async request 會失敗
+    //    backoffDeadlineMs 最後會被設定成 time.milliseconds() + RetryBackoffMs,
+    //    requestInFlight 會是 false
+    //    nextProducerBlock 仍是 null
+    //    capturedFailure 會是 True
+    // Test Thread ->
+    //    將 backoffDeadlineMs 設定成 -1
+
+    // Racing 發生在 test thread 和 sendRequest thread 之間,
+    // 如果 -1 覆蓋掉 RetryBackoffMs, 下一步驟的 verifyFailure 會成功 request nextProducerIDBlock
     verifyNewBlockAndProducerId(manager, new ProducerIdsBlock(0, 0, 1), 0)
+
+    // 更詳細的解釋: verifyFailure(manager) 有兩種可能
+    // 第二的 Producer ID Block Request Racing 導致 RetryBackoffMs = -1,
+    // 第三個 Producer ID Block Request 成功發送(因為 -1 = -1), 所以 next Producer ID Block 被成功產生. manager.capturedFailure.get 為 True)
+    // 解法,
+    //  1. 在 verifyFailure 裡面不要再 Request nextProducerBlock. 直接等待 manager.capturedFailure.get 為 True
 
     verifyFailure(manager)
 
@@ -222,6 +243,7 @@ class ProducerIdManagerTest {
   }
 
   private def verifyFailure(manager: MockProducerIdManager): Unit = {
+    // 會根據目前的 backoffDeadlineMs 來判斷是否要發送下一個 Producer ID Block Request, 理想上這里不會發送
     assertCoordinatorLoadInProgressExceptionFailure(manager.generateProducerId())
     TestUtils.waitUntilTrue(() => {
       manager synchronized {

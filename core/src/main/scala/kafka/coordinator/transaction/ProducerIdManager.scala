@@ -25,6 +25,7 @@ import org.apache.kafka.common.message.AllocateProducerIdsRequestData
 import org.apache.kafka.common.protocol.Errors
 import org.apache.kafka.common.requests.{AllocateProducerIdsRequest, AllocateProducerIdsResponse}
 import org.apache.kafka.common.utils.Time
+//import org.apache.kafka.common.utils.Utils
 import org.apache.kafka.server.{ControllerRequestCompletionHandler, NodeToControllerChannelManager}
 import org.apache.kafka.server.common.ProducerIdsBlock
 
@@ -213,14 +214,21 @@ class RPCProducerIdManager(brokerId: Int,
 
   private def maybeRequestNextBlock(): Unit = {
     val retryTimestamp = backoffDeadlineMs.get()
+
+    // 這個判斷式決定是否要重新請求 Producer ID Block,
+    // testUnrecoverableErrors() 期待 block request fail (第二次 sendRequest) 過後的 block request 都會被擋掉(直到 time.sleep(RetryBackoffMs))
+    // verifyFailure() 不該成功請求新的 Producer Block
     if (retryTimestamp == NoRetry || time.milliseconds() >= retryTimestamp) {
       // Send a request only if we reached the retry deadline, or if no deadline was set.
 
       if (nextProducerIdBlock.get == null &&
         requestInFlight.compareAndSet(false, true) ) {
 
+        // Reset backoff
         sendRequest()
-        // Reset backoff after a successful send.
+        // 如果 reset -1 比 (reset backoffDeadlineMs+delay) 先發生 -> verifyFailure(manager)  會通過
+        // 如果 reset -1 比 (reset backoffDeadlineMs+delay) 晚發生 -> verifyFailure(manager)  會失敗 (因為會重新請求 Block, 且成功)
+        //        Utils.sleep(3000) // 加入這個 Sleep 可以重現 Issue
         backoffDeadlineMs.set(NoRetry)
       }
     }
@@ -271,6 +279,8 @@ class RPCProducerIdManager(brokerId: Int,
     if (!successfulResponse) {
       // There is no need to compare and set because only one thread
       // handles the AllocateProducerIds response.
+
+      // 正常的情況下, 這裡會使 verifyFailure(manager) 不會再請求新的 Block, 直到 time.sleep(RetryBackoffMs) 過後
       backoffDeadlineMs.set(time.milliseconds() + RetryBackoffMs)
       requestInFlight.set(false)
     }
