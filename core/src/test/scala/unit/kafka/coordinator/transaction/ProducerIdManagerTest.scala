@@ -204,7 +204,8 @@ class ProducerIdManagerTest {
     // 解法,
     //  1. 在 verifyFailure 裡面不要再 Request nextProducerBlock. 直接等待 manager.capturedFailure.get 為 True
 
-    verifyFailure(manager)
+//    verifyFailure(manager)
+    verifyFailureWithNextBlockRequest(manager)
 
     time.sleep(RetryBackoffMs)
     verifyNewBlockAndProducerId(manager, new ProducerIdsBlock(0, 1, 1), 1)
@@ -245,6 +246,15 @@ class ProducerIdManagerTest {
   private def verifyFailure(manager: MockProducerIdManager): Unit = {
     // 會根據目前的 backoffDeadlineMs 來判斷是否要發送下一個 Producer ID Block Request, 理想上這里不會發送
     assertCoordinatorLoadInProgressExceptionFailure(manager.generateProducerId())
+    TestUtils.waitUntilTrue(() => {
+      manager synchronized {
+        manager.capturedFailure.get
+      }
+    }, "Expected failure")
+    manager.capturedFailure.set(false)
+  }
+
+  private def verifyFailureWithNextBlockRequest(manager: MockProducerIdManager): Unit = {
     TestUtils.waitUntilTrue(() => {
       manager synchronized {
         manager.capturedFailure.get
