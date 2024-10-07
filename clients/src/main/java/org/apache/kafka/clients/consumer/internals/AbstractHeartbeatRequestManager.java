@@ -271,6 +271,7 @@ public abstract class AbstractHeartbeatRequestManager<R extends AbstractResponse
 
     @SuppressWarnings("unchecked")
     private NetworkClientDelegate.UnsentRequest makeHeartbeatRequest(final boolean ignoreResponse) {
+        logger.warn("### makeHeartbeatRequest!!!");
         NetworkClientDelegate.UnsentRequest request = buildHeartbeatRequest();
         if (ignoreResponse)
             return logResponse(request);

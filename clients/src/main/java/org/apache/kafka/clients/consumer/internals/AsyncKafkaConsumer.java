@@ -1272,12 +1272,17 @@ public class AsyncKafkaConsumer<K, V> implements ConsumerDelegate<K, V> {
             // If users subscribe to an invalid topic name, they will get InvalidTopicException in error events,
             // because network thread keeps trying to send MetadataRequest in the background.
             // Ignore it to avoid unsubscribe failed.
+
+            log.warn("### Before processBackgroundEvents");
             processBackgroundEvents(unsubscribeEvent.future(), timer, e -> e instanceof InvalidTopicException);
+            log.warn("### After processBackgroundEvents");
+
             log.info("Completed releasing assignment and sending leave group to close consumer");
         } catch (TimeoutException e) {
             log.warn("Consumer triggered an unsubscribe event to leave the group but couldn't " +
                 "complete it within {} ms. It will proceed to close.", timer.timeoutMs());
         } finally {
+            log.warn("### Final processBackgroundEvents");
             timer.update();
         }
     }

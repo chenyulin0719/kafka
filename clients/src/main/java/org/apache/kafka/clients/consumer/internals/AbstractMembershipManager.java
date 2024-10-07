@@ -30,6 +30,7 @@ import org.apache.kafka.common.utils.Time;
 import org.slf4j.Logger;
 
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -542,6 +543,7 @@ public abstract class AbstractMembershipManager<R extends AbstractResponse> impl
      * to leave the group has been sent out.
      */
     public CompletableFuture<Void> leaveGroup() {
+        log.warn("### make leaveGroup request");
         if (isNotInGroup()) {
             if (state == MemberState.FENCED) {
                 clearAssignment();
@@ -1232,6 +1234,12 @@ public abstract class AbstractMembershipManager<R extends AbstractResponse> impl
     abstract int leaveGroupEpoch();
 
     protected void updateMemberEpoch(int newEpoch) {
+
+        final StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
+        final String stackTraceString = Arrays.stream(stackTraceElements)
+                .map(StackTraceElement::toString)
+                .collect(Collectors.joining("\n"));
+        log.warn("### in updateMemberEpoch, memberId ={}, current epoch:{}, new epoch: {}, stack: {}", memberId, this.memberEpoch, newEpoch, stackTraceString);
         boolean newEpochReceived = this.memberEpoch != newEpoch;
         this.memberEpoch = newEpoch;
         // Simply notify based on epoch change only, given that the member will never receive a

@@ -119,8 +119,8 @@ import org.apache.kafka.timeline.TimelineHashMap;
 import org.apache.kafka.timeline.TimelineHashSet;
 
 import org.slf4j.Logger;
-
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -1220,6 +1220,15 @@ public class GroupMetadataManager {
         String error
     ) throws InvalidRequestException {
         if (value != null && value.trim().isEmpty()) {
+
+            if ("MemberId can't be empty.".equals(error)){
+                final StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
+                final String stackTraceString = Arrays.stream(stackTraceElements)
+                        .map(StackTraceElement::toString)
+                        .collect(Collectors.joining("\n"));
+                log.warn("### MemberId can't be empty, stackTrace={}", stackTraceString);
+            }
+
             throw new InvalidRequestException(error);
         }
     }

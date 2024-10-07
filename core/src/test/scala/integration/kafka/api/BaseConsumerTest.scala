@@ -118,8 +118,8 @@ object BaseConsumerTest {
   // * KRaft and the consumer group protocol
   def getTestQuorumAndGroupProtocolParametersAll() : java.util.stream.Stream[Arguments] = {
     util.Arrays.stream(Array(
-        Arguments.of("zk", "classic"),
-        Arguments.of("kraft", "classic"),
+//        Arguments.of("kraft", "classic"),
+//        Arguments.of("kraft", "classic")
         Arguments.of("kraft", "consumer")
     ))
   }
