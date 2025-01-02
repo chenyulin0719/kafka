@@ -254,12 +254,7 @@ class TransactionsTest extends IntegrationTestHarness {
   def testReadCommittedConsumerShouldNotSeeUndecidedDataSimplify(quorum: String, groupProtocol: String): Unit = {
     // ./gradlew :storage:quarantinedTest --tests TransactionsWithTieredStoreTest.testReadCommittedConsumerShouldNotSeeUndecidedDataSimplify  --rerun --fail-fast
 
-//    val producer1 = transactionalProducers.head
-//    producer1.initTransactions()
-//    producer1.beginTransaction()
-
     val producer1 = nonTransactionalProducers.head
-
     val readUncommittedConsumer = nonTransactionalConsumers.head
 
     val latestVisibleTimestamp = System.currentTimeMillis()
@@ -269,7 +264,6 @@ class TransactionsTest extends IntegrationTestHarness {
     producer1.send(new ProducerRecord(topic1, 0, latestWrittenTimestamp, "b".getBytes, "2".getBytes))
     producer1.flush()
 
-    // ensure the records are visible to the read uncommitted consumer
     val tp1 = new TopicPartition(topic1, 0)
     readUncommittedConsumer.assign(Set(tp1).asJava)
 
