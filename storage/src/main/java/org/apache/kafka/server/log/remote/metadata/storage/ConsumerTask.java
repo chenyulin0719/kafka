@@ -24,6 +24,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.RetriableException;
 import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.utils.Time;
+import org.apache.kafka.common.utils.Utils;
 import org.apache.kafka.server.log.remote.metadata.storage.serialization.RemoteLogMetadataSerde;
 import org.apache.kafka.server.log.remote.storage.RemoteLogMetadata;
 import org.apache.kafka.server.log.remote.storage.RemoteLogSegmentMetadata;
@@ -134,6 +135,9 @@ class ConsumerTask implements Runnable, Closeable {
         try {
             if (hasAssignmentChanged) {
                 maybeWaitForPartitionAssignments();
+                log.info("Make sure the readUncommittedConsumer.offsetsForTimes() happen before Remote log metadata cache initialization");
+                log.info("The call will trigger ReplicaNotAvailableException, consumer should retry it.");
+                Utils.sleep(2000);
             }
 
             log.trace("Polling consumer to receive remote log metadata topic records");

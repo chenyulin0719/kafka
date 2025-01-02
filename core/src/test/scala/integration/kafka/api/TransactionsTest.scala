@@ -45,6 +45,7 @@ import scala.jdk.CollectionConverters._
 class TransactionsTest extends IntegrationTestHarness {
   override def brokerCount = 3
 
+  val nonTransactionalProducerCount = 1
   val transactionalProducerCount = 2
   val transactionalConsumerCount = 1
   val nonTransactionalConsumerCount = 1
@@ -53,6 +54,7 @@ class TransactionsTest extends IntegrationTestHarness {
   val topic2 = "topic2"
   val numPartitions = 4
 
+  val nonTransactionalProducers = mutable.Buffer[KafkaProducer[Array[Byte], Array[Byte]]]()
   val transactionalProducers = mutable.Buffer[KafkaProducer[Array[Byte], Array[Byte]]]()
   val transactionalConsumers = mutable.Buffer[Consumer[Array[Byte], Array[Byte]]]()
   val nonTransactionalConsumers = mutable.Buffer[Consumer[Array[Byte], Array[Byte]]]()
@@ -94,6 +96,10 @@ class TransactionsTest extends IntegrationTestHarness {
     createTopic(topic1, numPartitions, brokerCount, topicConfig())
     createTopic(topic2, numPartitions, brokerCount, topicConfig())
 
+    for (_ <- 0 until nonTransactionalProducerCount) {
+      val producer = createProducer()
+      nonTransactionalProducers += producer
+    }
     for (_ <- 0 until transactionalProducerCount)
       createTransactionalProducer("transactional-producer")
     for (_ <- 0 until transactionalConsumerCount)
@@ -104,6 +110,7 @@ class TransactionsTest extends IntegrationTestHarness {
 
   @AfterEach
   override def tearDown(): Unit = {
+    nonTransactionalProducers.foreach(_.close())
     transactionalProducers.foreach(_.close())
     transactionalConsumers.foreach(_.close())
     nonTransactionalConsumers.foreach(_.close())
@@ -238,6 +245,42 @@ class TransactionsTest extends IntegrationTestHarness {
     assertNull(readCommittedOffsetsForTimes.get(tp1))
     assertNull(readCommittedOffsetsForTimes.get(tp2))
   }
+
+
+
+  @Flaky("KAFKA-18036-Simplify")
+  @ParameterizedTest(name = TestInfoUtils.TestWithParameterizedQuorumAndGroupProtocolNames)
+  @MethodSource(Array("getTestQuorumAndGroupProtocolParametersAll"))
+  def testReadCommittedConsumerShouldNotSeeUndecidedDataSimplify(quorum: String, groupProtocol: String): Unit = {
+    // ./gradlew :storage:quarantinedTest --tests TransactionsWithTieredStoreTest.testReadCommittedConsumerShouldNotSeeUndecidedDataSimplify  --rerun --fail-fast
+
+//    val producer1 = transactionalProducers.head
+//    producer1.initTransactions()
+//    producer1.beginTransaction()
+
+    val producer1 = nonTransactionalProducers.head
+
+    val readUncommittedConsumer = nonTransactionalConsumers.head
+
+    val latestVisibleTimestamp = System.currentTimeMillis()
+    val latestWrittenTimestamp = latestVisibleTimestamp + 1
+
+    producer1.send(new ProducerRecord(topic1, 0, latestWrittenTimestamp, "a".getBytes, "1".getBytes))
+    producer1.send(new ProducerRecord(topic1, 0, latestWrittenTimestamp, "b".getBytes, "2".getBytes))
+    producer1.flush()
+
+    // ensure the records are visible to the read uncommitted consumer
+    val tp1 = new TopicPartition(topic1, 0)
+    readUncommittedConsumer.assign(Set(tp1).asJava)
+
+    // the offsetsForTimes is not retied because no metadata update triggered, so offsetsForTimes will be timeout
+    val readUncommittedOffsetsForTimes = readUncommittedConsumer.offsetsForTimes(Map(
+      tp1 -> (latestWrittenTimestamp: JLong)
+    ).asJava)
+    assertEquals(1, readUncommittedOffsetsForTimes.size)
+  }
+
+
 
   @ParameterizedTest(name = TestInfoUtils.TestWithParameterizedQuorumAndGroupProtocolNames)
   @MethodSource(Array("getTestQuorumAndGroupProtocolParametersAll"))
