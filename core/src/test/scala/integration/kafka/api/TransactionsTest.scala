@@ -247,12 +247,10 @@ class TransactionsTest extends IntegrationTestHarness {
   }
 
 
-
-  @Flaky("KAFKA-18036-Simplify")
   @ParameterizedTest(name = TestInfoUtils.TestWithParameterizedQuorumAndGroupProtocolNames)
   @MethodSource(Array("getTestQuorumAndGroupProtocolParametersAll"))
   def testReadCommittedConsumerShouldNotSeeUndecidedDataSimplify(quorum: String, groupProtocol: String): Unit = {
-    // ./gradlew :storage:quarantinedTest --tests TransactionsWithTieredStoreTest.testReadCommittedConsumerShouldNotSeeUndecidedDataSimplify  --rerun --fail-fast
+    // ./gradlew :storage:test --tests TransactionsWithTieredStoreTest.testReadCommittedConsumerShouldNotSeeUndecidedDataSimplify  --rerun --fail-fast
 
     val producer1 = nonTransactionalProducers.head
     val readUncommittedConsumer = nonTransactionalConsumers.head
