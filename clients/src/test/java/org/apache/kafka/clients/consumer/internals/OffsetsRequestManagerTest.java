@@ -296,14 +296,14 @@ public class OffsetsRequestManagerTest {
         assertEquals(1, requestManager.requestsToRetry());
         assertEquals(0, requestManager.requestsToRetryOnMetadataUpdate());
 
-        // Cluster metadata update won't trigger a retry with RetriableError
+        // Cluster metadata update won't retry requests in requestsToRetry
         mockSuccessfulRequest(Collections.singletonMap(TEST_PARTITION_1, LEADER_1));
         requestManager.onUpdate(new ClusterResource(""));
         assertEquals(0, requestManager.requestsToSend());
         assertEquals(1, requestManager.requestsToRetry());
         assertEquals(0, requestManager.requestsToRetryOnMetadataUpdate());
 
-        // Failed requests should be retried after next poll
+        // Following poll should send the retry request and get a successful response
         Map<TopicPartition, OffsetAndTimestampInternal> expectedOffsets =
                 Collections.singletonMap(TEST_PARTITION_1, new OffsetAndTimestampInternal(5L, -1, Optional.empty()));
         verifySuccessfulPollAndResponseReceived(fetchOffsetsFuture, expectedOffsets);
@@ -404,7 +404,7 @@ public class OffsetsRequestManagerTest {
         assertEquals(0, requestManager.requestsToSend());
         assertEquals(0, requestManager.requestsToRetryOnMetadataUpdate());
 
-        // Cluster metadata update. Nothing is retried after the metadata update.
+        // Cluster metadata update won't retry requests in requestsToRetry
         mockSuccessfulRequest(partitionLeaders);
         requestManager.onUpdate(new ClusterResource(""));
         assertEquals(0, requestManager.requestsToSend());
