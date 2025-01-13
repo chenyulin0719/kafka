@@ -1864,17 +1864,20 @@ class PlaintextAdminIntegrationTest extends BaseAdminIntegrationTest {
       val consumerSet = groupInstanceSet.map { groupInstanceId => createConsumer(configOverrides = createProperties(groupInstanceId))}
       val topicSet = Set(testTopicName, testTopicName1, testTopicName2)
 
-      val latch = new CountDownLatch(consumerSet.size)
+      val startLatch = new CountDownLatch(consumerSet.size)
+      val stopLatch = new CountDownLatch(consumerSet.size)
+      val consumerThreadRunning = new AtomicBoolean(true)
+
       try {
         def createConsumerThread[K,V](consumer: Consumer[K,V], topic: String): Thread = {
           new Thread {
             override def run : Unit = {
               consumer.subscribe(Collections.singleton(topic))
               try {
-                while (true) {
+                while (consumerThreadRunning.get()) {
                   consumer.poll(JDuration.ofSeconds(5))
-                  if (!consumer.assignment.isEmpty && latch.getCount > 0L)
-                    latch.countDown()
+                  if (!consumer.assignment.isEmpty && startLatch.getCount > 0L)
+                    startLatch.countDown()
                   try {
                     consumer.commitSync()
                   } catch {
@@ -1883,6 +1886,8 @@ class PlaintextAdminIntegrationTest extends BaseAdminIntegrationTest {
                 }
               } catch {
                 case _: InterruptException => // Suppress the output to stderr
+              } finally {
+                stopLatch.countDown()
               }
             }
           }
@@ -1894,7 +1899,7 @@ class PlaintextAdminIntegrationTest extends BaseAdminIntegrationTest {
 
         try {
           consumerThreads.foreach(_.start())
-          assertTrue(latch.await(30000, TimeUnit.MILLISECONDS))
+          assertTrue(startLatch.await(30000, TimeUnit.MILLISECONDS))
           // Test that we can list the new group.
           TestUtils.waitUntilTrue(() => {
             val matching = client.listConsumerGroups.all.get.asScala.filter(group =>
@@ -2013,6 +2018,10 @@ class PlaintextAdminIntegrationTest extends BaseAdminIntegrationTest {
           val firstMemberFuture = removeMembersResult.memberResult(new MemberToRemove(invalidInstanceId))
           assertFutureThrows(firstMemberFuture, classOf[UnknownMemberIdException])
 
+          // Stop the consumer threads before removing the group members to prevent rejoining.
+          consumerThreadRunning.set(false)
+          assertTrue(stopLatch.await(30000, TimeUnit.MILLISECONDS))
+
           // Test consumer group deletion
           var deleteResult = client.deleteConsumerGroups(Seq(testGroupId, fakeGroupId).asJava)
           assertEquals(2, deleteResult.deletedGroups().size())
@@ -2036,6 +2045,10 @@ class PlaintextAdminIntegrationTest extends BaseAdminIntegrationTest {
           val validMemberFuture = removeMembersResult.memberResult(new MemberToRemove(testInstanceId1))
           assertNull(validMemberFuture.get())
 
+          // The flaky was caused by rejoining of removed consumer member. Sleep for 1 second to simulate the scenario
+          // Reproduced: error: org.opentest4j.AssertionFailedError: expected: <2> but was: <3>
+          // Utils.sleep(1000)
+
           val describeTestGroupResult = client.describeConsumerGroups(Seq(testGroupId).asJava,
             new DescribeConsumerGroupsOptions().includeAuthorizedOperations(true))
           assertEquals(1, describeTestGroupResult.describedGroups().size())
@@ -2049,6 +2062,10 @@ class PlaintextAdminIntegrationTest extends BaseAdminIntegrationTest {
           // Delete all active members remaining (a static member + a dynamic member)
           removeMembersResult = client.removeMembersFromConsumerGroup(testGroupId, new RemoveMembersFromConsumerGroupOptions())
           assertNull(removeMembersResult.all().get())
+
+          // The flaky was caused by rejoining of removed consumer member. Sleep for 1 second to simulate the scenario
+          // Reproduced: error: org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+          Utils.sleep(1000)
 
           // The group should contain no members now.
           testGroupDescription = client.describeConsumerGroups(Seq(testGroupId).asJava,
