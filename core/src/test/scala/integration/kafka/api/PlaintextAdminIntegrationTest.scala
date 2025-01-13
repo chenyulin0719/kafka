@@ -2230,17 +2230,20 @@ class PlaintextAdminIntegrationTest extends BaseAdminIntegrationTest {
       val consumerSet = groupInstanceSet.map { groupInstanceId => createConsumer(configOverrides = createProperties(groupInstanceId))}
       val topicSet = Set(testTopicName, testTopicName1, testTopicName2)
 
-      val latch = new CountDownLatch(consumerSet.size)
+      val startLatch = new CountDownLatch(consumerSet.size)
+      val stopLatch = new CountDownLatch(consumerSet.size)
+      val consumerThreadRunning = new AtomicBoolean(true)
+
       try {
         def createConsumerThread[K,V](consumer: Consumer[K,V], topic: String): Thread = {
           new Thread {
             override def run : Unit = {
               consumer.subscribe(Collections.singleton(topic))
               try {
-                while (true) {
+                while (consumerThreadRunning.get()) {
                   consumer.poll(JDuration.ofSeconds(5))
-                  if (!consumer.assignment.isEmpty && latch.getCount > 0L)
-                    latch.countDown()
+                  if (!consumer.assignment.isEmpty && startLatch.getCount > 0L)
+                    startLatch.countDown()
                   try {
                     consumer.commitSync()
                   } catch {
@@ -2249,6 +2252,8 @@ class PlaintextAdminIntegrationTest extends BaseAdminIntegrationTest {
                 }
               } catch {
                 case _: InterruptException => // Suppress the output to stderr
+              } finally {
+                stopLatch.countDown()
               }
             }
           }
@@ -2260,7 +2265,7 @@ class PlaintextAdminIntegrationTest extends BaseAdminIntegrationTest {
 
         try {
           consumerThreads.foreach(_.start())
-          assertTrue(latch.await(30000, TimeUnit.MILLISECONDS))
+          assertTrue(startLatch.await(30000, TimeUnit.MILLISECONDS))
           // Test that we can list the new group.
           TestUtils.waitUntilTrue(() => {
             val matching = client.listConsumerGroups.all.get.asScala.filter(group =>
@@ -2413,6 +2418,10 @@ class PlaintextAdminIntegrationTest extends BaseAdminIntegrationTest {
           assertFutureThrows(deleteResult.deletedGroups().get(testGroupId),
             classOf[GroupNotEmptyException])
 
+          // Stop the consumer threads before removing the group members to prevent rejoining.
+          consumerThreadRunning.set(false)
+          assertTrue(stopLatch.await(30000, TimeUnit.MILLISECONDS))
+
           // Test delete one correct static member
           val removeOptions = new RemoveMembersFromConsumerGroupOptions(Collections.singleton(new MemberToRemove(testInstanceId1)))
           removeOptions.reason("test remove")
@@ -2421,6 +2430,9 @@ class PlaintextAdminIntegrationTest extends BaseAdminIntegrationTest {
           assertNull(removeMembersResult.all().get())
           val validMemberFuture = removeMembersResult.memberResult(new MemberToRemove(testInstanceId1))
           assertNull(validMemberFuture.get())
+
+          // The flaky was caused by rejoining of removed members. Sleep for 1 second to simulate the scenario.
+          Utils.sleep(1000)
 
           val describeTestGroupResult = client.describeConsumerGroups(Seq(testGroupId).asJava,
             new DescribeConsumerGroupsOptions().includeAuthorizedOperations(true))
