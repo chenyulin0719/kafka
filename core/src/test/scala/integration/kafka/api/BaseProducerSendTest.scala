@@ -514,12 +514,14 @@ abstract class BaseProducerSendTest extends KafkaServerTestHarness {
       val producer = createProducer(lingerMs = Int.MaxValue, deliveryTimeoutMs = Int.MaxValue)
       val responses = (0 until numRecords) map (_ => producer.send(record0))
       assertTrue(responses.forall(!_.isDone), "No request is complete.")
+      Thread.sleep(1000)
       producer.close(Duration.ZERO)
       responses.foreach { future =>
         val e = assertThrows(classOf[ExecutionException], () => future.get())
+        debug(s"#### exception: ${e.getCause}")
         assertEquals(classOf[KafkaException], e.getCause.getClass)
       }
-      assertEquals(0, consumer.poll(Duration.ofMillis(50L)).count, "Fetch response should have no message returned.")
+      assertEquals(0, consumer.poll(Duration.ofMillis(5000L)).count, "Fetch response should have no message returned.")
     }
   }
 

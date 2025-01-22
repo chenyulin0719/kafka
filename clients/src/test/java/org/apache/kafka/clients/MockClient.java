@@ -25,8 +25,10 @@ import org.apache.kafka.common.requests.AbstractRequest;
 import org.apache.kafka.common.requests.AbstractResponse;
 import org.apache.kafka.common.requests.MetadataRequest;
 import org.apache.kafka.common.requests.MetadataResponse;
+import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.test.TestUtils;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -41,12 +43,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.Arrays;
 
 /**
  * A mock network client for use testing code
  */
 public class MockClient implements KafkaClient {
     public static final RequestMatcher ALWAYS_TRUE = body -> true;
+    private final Logger log;
 
     private static class FutureResponse {
         private final Node node;
@@ -100,6 +104,7 @@ public class MockClient implements KafkaClient {
     public MockClient(Time time, MockMetadataUpdater metadataUpdater) {
         this.time = time;
         this.metadataUpdater = metadataUpdater;
+        this.log = new LogContext().logger(this.getClass());
     }
 
     public MockClient(Time time, List<Node> staticNodes) {
@@ -219,6 +224,16 @@ public class MockClient implements KafkaClient {
 
     @Override
     public void send(ClientRequest request, long now) {
+        final StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
+        final String stackTraceString = Arrays.stream(stackTraceElements)
+                .map(StackTraceElement::toString)
+                .collect(Collectors.joining("\n"));
+
+//        log.info("### in sent: {}, stackTrace: {}", request, stackTraceString);
+        log.info("### in sent: Thread:  {}, request {}, ",Thread.currentThread().getName(), request);
+
+
+
         if (!connectionState(request.destination()).isReady(now))
             throw new IllegalStateException("Cannot send " + request + " since the destination is not ready");
 
@@ -294,6 +309,7 @@ public class MockClient implements KafkaClient {
 
     @Override
     public synchronized void wakeup() {
+        log.info("### In wakeup: Thread:  {}", Thread.currentThread().getName());
         if (numBlockingWakeups > 0) {
             numBlockingWakeups--;
             notify();

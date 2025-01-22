@@ -32,6 +32,10 @@ import org.apache.kafka.common.requests.AbstractRequest;
 import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Timer;
+import java.util.Arrays;
+import java.util.stream.Collectors;
+
+import org.apache.kafka.common.utils.Utils;
 
 import org.slf4j.Logger;
 
@@ -188,9 +192,19 @@ public class ConsumerNetworkClient implements Closeable {
     public void wakeup() {
         // wakeup should be safe without holding the client lock since it simply delegates to
         // Selector's wakeup, which is thread-safe
-        log.debug("Received user wakeup");
+
+//        final StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
+//        final String stackTraceString = Arrays.stream(stackTraceElements)
+//                .map(StackTraceElement::toString)
+//                .collect(Collectors.joining("\n"));
+////
+//        log.debug("Received user wakeup, trace: {}", stackTraceString);
+
+        log.debug("### wakeup set to true, thread name: {}", Thread.currentThread().getName());
         this.wakeup.set(true);
         this.client.wakeup();
+//        Utils.sleep(15000);
+//        log.debug("### sleep 15000 to wait for heartbeat(Done)");
     }
 
     /**
@@ -229,7 +243,14 @@ public class ConsumerNetworkClient implements Closeable {
      */
     public boolean poll(RequestFuture<?> future, Timer timer, boolean disableWakeup) {
         do {
+//            log.debug("### Next poll, sleep 3 sec, {}", Thread.currentThread().getName());
+//            Utils.sleep(3000);
+            log.debug("### Next poll, no delay, {}", Thread.currentThread().getName());
+
+
             poll(timer, future, disableWakeup);
+
+            log.debug("### Next poll completed: {}", Thread.currentThread().getName());
         } while (!future.isDone() && timer.notExpired());
         return future.isDone();
     }
@@ -260,14 +281,18 @@ public class ConsumerNetworkClient implements Closeable {
      * @param disableWakeup If TRUE disable triggering wake-ups
      */
     public void poll(Timer timer, PollCondition pollCondition, boolean disableWakeup) {
+        // 希望有個不預期的 poll 會把
+        log.info("############### in poll, thread name: {}", Thread.currentThread().getName());
         // there may be handlers which need to be invoked if we woke up the previous call to poll
         firePendingCompletedRequests();
 
         lock.lock();
         try {
+            log.info("### 1. In poll, thread name: {}", Thread.currentThread().getName());
             // Handle async disconnects prior to attempting any sends
             handlePendingDisconnects();
 
+            log.info("### 2. In poll, thread name: {}", Thread.currentThread().getName());
             // send all the requests we can send now
             long pollDelayMs = trySend(timer.currentTimeMs());
 
@@ -275,21 +300,29 @@ public class ConsumerNetworkClient implements Closeable {
             // condition becomes satisfied after the call to shouldBlock() (because of a fired completion
             // handler), the client will be woken up.
             if (pendingCompletion.isEmpty() && (pollCondition == null || pollCondition.shouldBlock())) {
+
+                log.info("### 3. In poll, thread name: {}", Thread.currentThread().getName());
                 // if there are no requests in flight, do not block longer than the retry backoff
                 long pollTimeout = Math.min(timer.remainingMs(), pollDelayMs);
                 if (client.inFlightRequestCount() == 0)
                     pollTimeout = Math.min(pollTimeout, retryBackoffMs);
                 client.poll(pollTimeout, timer.currentTimeMs());
             } else {
+
+                log.info("### 4. In poll, thread name: {}", Thread.currentThread().getName());
                 client.poll(0, timer.currentTimeMs());
             }
             timer.update();
 
+            log.info("### 5. In poll, thread name: {}", Thread.currentThread().getName());
             // handle any disconnects by failing the active requests. note that disconnects must
             // be checked immediately following poll since any subsequent call to client.ready()
             // will reset the disconnect status
             checkDisconnects(timer.currentTimeMs());
+
+            log.info("### 6. In poll, thread name: {}", Thread.currentThread().getName());
             if (!disableWakeup) {
+                log.info("### 6.1. In poll, thread name: {}", Thread.currentThread().getName());
                 // trigger wakeups after checking for disconnects so that the callbacks will be ready
                 // to be fired on the next call to poll()
                 maybeTriggerWakeup();
@@ -297,23 +330,33 @@ public class ConsumerNetworkClient implements Closeable {
             // throw InterruptException if this thread is interrupted
             maybeThrowInterruptException();
 
+            log.info("### 7. In poll, thread name: {}", Thread.currentThread().getName());
             // try again to send requests since buffer space may have been
             // cleared or a connect finished in the poll
             trySend(timer.currentTimeMs());
 
+            log.info("### 8. In poll, thread name: {}", Thread.currentThread().getName());
             // fail requests that couldn't be sent if they have expired
             failExpiredRequests(timer.currentTimeMs());
 
+            log.info("### 9. In poll, thread name: {}", Thread.currentThread().getName());
             // clean unsent requests collection to keep the map from growing indefinitely
             unsent.clean();
+            log.info("### 10. In poll, thread name: {}", Thread.currentThread().getName());
         } finally {
             lock.unlock();
+
+            log.info("### 11. In poll, thread name: {}", Thread.currentThread().getName());
         }
+
+        log.info("### 11. unlock: {}", Thread.currentThread().getName());
 
         // called without the lock to avoid deadlock potential if handlers need to acquire locks
         firePendingCompletedRequests();
 
+        log.info("### 13. In poll, thread name: {}", Thread.currentThread().getName());
         metadata.maybeThrowAnyException();
+        log.info("### 14. In poll, thread name: {}", Thread.currentThread().getName());
     }
 
     /**
@@ -420,6 +463,8 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     private void firePendingCompletedRequests() {
+        log.info("### 12.1 In poll(firePendingCompletedRequests), thread name: {}", Thread.currentThread().getName());
+
         boolean completedRequestsFired = false;
         for (;;) {
             RequestFutureCompletionHandler completionHandler = pendingCompletion.poll();
@@ -429,10 +474,13 @@ public class ConsumerNetworkClient implements Closeable {
             completionHandler.fireCompletion();
             completedRequestsFired = true;
         }
+        log.info("### 12.2 In poll(firePendingCompletedRequests), thread name: {}", Thread.currentThread().getName());
 
         // wakeup the client in case it is blocking in poll for this future's completion
         if (completedRequestsFired)
             client.wakeup();
+        log.info("### 12.3 In poll(firePendingCompletedRequests), thread name: {}", Thread.currentThread().getName());
+
     }
 
     private void checkDisconnects(long now) {
@@ -525,8 +573,13 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     public void maybeTriggerWakeup() {
+        log.debug("### In maybeTriggerWakeup, thread name: {}, wakeupDisabled.get(): {}", Thread.currentThread().getName(), wakeupDisabled.get());
+
         if (!wakeupDisabled.get() && wakeup.get()) {
-            log.debug("Raising WakeupException in response to user wakeup");
+//            log.debug("Raising WakeupException in response to user wakeup");
+            log.debug("### Raising WakeupException in response to user wakeup, thread name: {}", Thread.currentThread().getName());
+
+            log.debug("### wakeup set to false, thread name: {}", Thread.currentThread().getName());
             wakeup.set(false);
             throw new WakeupException();
         }

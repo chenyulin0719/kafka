@@ -635,6 +635,7 @@ public class ClassicKafkaConsumer<K, V> implements ConsumerDelegate<K, V> {
             }
 
             do {
+                log.info("############### In classic");
                 client.maybeTriggerWakeup();
 
                 // try to update assignment metadata BUT do not need to block on the timer for join group

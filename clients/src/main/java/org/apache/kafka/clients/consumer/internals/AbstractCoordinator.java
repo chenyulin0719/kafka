@@ -72,6 +72,7 @@ import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.common.utils.Timer;
 import org.apache.kafka.common.utils.Utils;
+import org.apache.kafka.common.errors.WakeupException;
 
 import org.slf4j.Logger;
 
@@ -287,6 +288,7 @@ public abstract class AbstractCoordinator implements Closeable {
                 throw fatalException;
             }
             final RequestFuture<Void> future = lookupCoordinator();
+
             client.poll(future, timer, disableWakeup);
 
             if (!future.isDone()) {
@@ -392,8 +394,15 @@ public abstract class AbstractCoordinator implements Closeable {
      * Ensure that the group is active (i.e. joined and synced)
      */
     public void ensureActiveGroup() {
-        while (!ensureActiveGroup(time.timer(Long.MAX_VALUE))) {
-            log.warn("still waiting to ensure active group");
+        log.debug("#### In ensureActiveGroup");
+        try {
+            while (!ensureActiveGroup(time.timer(Long.MAX_VALUE))) {
+                log.warn("still waiting to ensure active group");
+            }
+        } catch (WakeupException e) {
+//            log.debug("#### Received wakeup exception during ensureActiveGroup, e: {}", e);
+            log.debug("#### Received wakeup exception during ensureActiveGroup");
+            throw e;
         }
     }
 
@@ -412,6 +421,8 @@ public abstract class AbstractCoordinator implements Closeable {
         }
 
         startHeartbeatThreadIfNeeded();
+        log.info("### Let heartbeat thread run, delay 5 sec for worker thread");
+        Utils.sleep(5000);
         return joinGroupIfNeeded(timer);
     }
 
@@ -657,6 +668,7 @@ public abstract class AbstractCoordinator implements Closeable {
                             // we only need to enable heartbeat thread whenever we transit to
                             // COMPLETING_REBALANCE state since we always transit from this state to STABLE
                             if (heartbeatThread != null)
+                                log.info("### In handle JoinGroupResponseHandler, enable heartbeat thread: {}", Thread.currentThread().getName());
                                 heartbeatThread.enable();
 
                             AbstractCoordinator.this.generation = new Generation(
@@ -674,6 +686,10 @@ public abstract class AbstractCoordinator implements Closeable {
                             }
                         }
                     }
+
+                    log.info("### Sleep 500 ms after receive join group response. {}", Thread.currentThread().getName());
+                    Utils.sleep(500);
+                    log.info("### Sleep 500 ms after receive join group response(Done). {}", Thread.currentThread().getName());
                 }
             } else if (error == Errors.COORDINATOR_LOAD_IN_PROGRESS) {
                 log.info("JoinGroup failed: Coordinator {} is loading the group.", coordinator());
@@ -1480,16 +1496,28 @@ public abstract class AbstractCoordinator implements Closeable {
         public void run() {
             try {
                 log.debug("Heartbeat thread started");
+
+//                log.debug("### delay 10s in heartbeat thread");
+//                Utils.sleep(10000);
+//                log.debug("### delay 10s in heartbeat thread(Done)");
                 while (true) {
+                    log.info("########## 1. in heartbeat thread");
                     synchronized (AbstractCoordinator.this) {
+
+                        log.info("########## 2. in heartbeat thread, closed:{}", closed);
                         if (closed)
                             return;
 
+                        log.info("########## 2.1. in heartbeat thread, enabled:{}", enabled);
                         if (!enabled) {
                             AbstractCoordinator.this.wait();
                             continue;
                         }
 
+//                        log.info("sleep 5 sec to wait for heartbeat");
+//                        Utils.sleep(5000);
+
+                        log.info("########## 3. in heartbeat thread");
                         // we do not need to heartbeat we are not part of a group yet;
                         // also if we already have fatal error, the client will be
                         // crashed soon, hence we do not need to continue heartbeating either
@@ -1498,10 +1526,13 @@ public abstract class AbstractCoordinator implements Closeable {
                             continue;
                         }
 
+                        log.info("########## 4. in heartbeat thread");
                         client.pollNoWakeup();
                         long now = time.milliseconds();
 
+                        log.info("########## 5. in heartbeat thread");
                         if (coordinatorUnknown()) {
+                            log.info("########## 6. in heartbeat thread");
                             if (findCoordinatorFuture != null) {
                                 // clear the future so that after the backoff, if the hb still sees coordinator unknown in
                                 // the next iteration it will try to re-discover the coordinator in case the main thread cannot
@@ -1512,25 +1543,31 @@ public abstract class AbstractCoordinator implements Closeable {
                             // backoff properly
                             AbstractCoordinator.this.wait(rebalanceConfig.retryBackoffMs);
                         } else if (heartbeat.sessionTimeoutExpired(now)) {
+                            log.info("########## 7. in heartbeat thread");
                             // the session timeout has expired without seeing a successful heartbeat, so we should
                             // probably make sure the coordinator is still healthy.
                             markCoordinatorUnknown("session timed out without receiving a "
                                     + "heartbeat response");
                         } else if (heartbeat.pollTimeoutExpired(now)) {
+                            log.info("########## 8. in heartbeat thread");
                             // the poll timeout has expired, which means that the foreground thread has stalled
                             // in between calls to poll().
                             handlePollTimeoutExpiry();
                         } else if (!heartbeat.shouldHeartbeat(now)) {
+                            log.info("########## 9. in heartbeat thread");
                             // poll again after waiting for the retry backoff in case the heartbeat failed or the
                             // coordinator disconnected. Note that the heartbeat timing takes account of
                             // exponential backoff.
                             AbstractCoordinator.this.wait(rebalanceConfig.retryBackoffMs);
                         } else {
+                            log.info("########## 10. in heartbeat thread");
                             heartbeat.sentHeartbeat(now);
                             final RequestFuture<Void> heartbeatFuture = sendHeartbeatRequest();
                             heartbeatFuture.addListener(new RequestFutureListener<>() {
                                 @Override
                                 public void onSuccess(Void value) {
+
+                                    log.info("########## 11. in heartbeat thread");
                                     synchronized (AbstractCoordinator.this) {
                                         heartbeat.receiveHeartbeat();
                                     }
@@ -1538,6 +1575,7 @@ public abstract class AbstractCoordinator implements Closeable {
 
                                 @Override
                                 public void onFailure(RuntimeException e) {
+                                    log.info("########## 12. in heartbeat thread");
                                     synchronized (AbstractCoordinator.this) {
                                         if (e instanceof RebalanceInProgressException) {
                                             // it is valid to continue heartbeating while the group is rebalancing. This

@@ -36,3 +36,8 @@ Configuration:
       # We are testing for a particular INFO log message in CommonNameLoggingTrustManagerFactoryWrapper
       - name: org.apache.kafka.common.security.ssl.CommonNameLoggingTrustManagerFactoryWrapper
         level: INFO
+
+      - name: org.apache.kafka.clients.consumer.internals
+        level: DEBUG
+      - name: org.apache.kafka.clients
+        level: DEBUG
